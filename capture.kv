@@ -8,10 +8,10 @@ FloatLayout:
         
     canvas:
         Color:
-            rgb: 1, 1, 0.3
-        Rectangle:
-            source: 'data/background.jpg'
-            size: self.size
+            rgb: 0,0,0
+        #Rectangle:
+        #    source: 'data/background.jpg'
+        #    size: self.size
 
                     
     # Widget holding all available slots to show previous images
@@ -19,23 +19,20 @@ FloatLayout:
     CapturedSlots:
         id: picture_slots
         layout: pic_layout
-        
-        RelativeLayout:
+                        
+        FboFloatLayout:
             id: pic_layout
             size: root.size
             pos: root.pos
-        
-            canvas:
-                Color:
-                    rgba: 0,1,1,0.3   
-                Rectangle:
-                    pos: self.pos
-                    size: self.size
+            alpha: picture_slots.alpha
             
-            Picture:
-                pos_hint: {'right':0.95, 'top':0.95}
-                scale: 1.0
-                
+            #canvas:
+            #    Color:
+            #        rgba: 1,1,1,0.8
+            #    Rectangle:
+            #        source: 'data/background.jpg'
+            #        pos: self.pos
+            #        size: self.size                
             
     Preview:
         id: camera_image
@@ -61,6 +58,7 @@ FloatLayout:
 # ----------------------------------------------------------------------            
 <WhiteBillboard>
     size_hint: 1.0, 1.0
+    index: 100
     
     canvas:
         Color:
@@ -76,8 +74,8 @@ FloatLayout:
 <Preview>:
     size: image.size
     size_hint: None, None
-    #pos_hint: {'center_x':0.5, 'center_y':0.5}
-    pos_hint: {'x':0.025, 'top':0.95}
+    pos_hint: {'center_x':0.5, 'center_y':0.5}
+    #pos_hint: {'x':0.025, 'top':0.95}
     
     # pass down to python the Image by the label preview_image
     preview_image: image
@@ -87,14 +85,15 @@ FloatLayout:
         texture: root.image.texture
         x: self.parent.x
         y: self.parent.y
+        color: 1,1,1,root.alpha
         
         # create initial image to be 400 pixels width
-        size: 640, 640 / self.image_ratio
+        size: 900, 900 / self.image_ratio
         
         # add shadow background
         canvas.before:
             Color:
-                rgba: 1,1,1,1
+                rgba: 1,1,1,root.alpha
             BorderImage:
                 source: 'data/shadow32.png'
                 border: (36,36,36,36)
@@ -105,31 +104,37 @@ FloatLayout:
 # Any captured image defintion
 # ----------------------------------------------------------------------            
 <Picture>:
-    #size_hint: image.size[0]/root.size[0], image.size[1]/root.size[1]
-    #size_hint: 0.1,0.1
-    #size: image.size
-            
-    Image:
-        id: image
-        texture: root.image.texture
-        color: 1,1,1,root.alpha
+    size_hint: None, None
+                
+    canvas:            
+        Color:
+            rgba: 1,1,1,1
+        Mesh:
+            vertices: root.vertices
+            indices: range(len(root.vertices) / 4)
+            texture: root.fbo_texture
+            mode: 'triangle_fan'
+    
+    #Image:
+    #    id: image
+    #    texture: root.img_texture
+    #    color: 1,1,1,root.alpha
         
-        # create initial image to be 400 pixels width
-        #size: 640, 360
-        size: 640, 640 / self.image_ratio
-        pos: 0,0
+    #    # create initial image to be 400 pixels width
+    #    #size: 640, 360
+    #    size: 600, 600 / self.image_ratio
+    #    #pos: 0,0
         
         # add shadow background
-        canvas.before:
-            Color:
-                rgba: 1,1,1,root.alpha
-            BorderImage:
-                source: 'data/shadow32.png'
-                border: (36,36,36,36)
-                size:(self.width+72, self.height+72)
-                pos: (-36,-36)
-
-
+        #canvas.before:
+        #    Color:
+        #        rgba: 1,1,1,root.alpha
+        #    BorderImage:
+        #        source: 'data/shadow32.png'
+        #        border: (36,36,36,36)
+        #        size:(self.width+72, self.height+72)
+        #        pos: (-36,-36)
+                
 # ----------------------------------------------------------------------            
 # Numbers for the countdown
 # ----------------------------------------------------------------------            
