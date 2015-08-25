@@ -21,6 +21,9 @@ from kivy.config import Config
 #Config.set('graphics', 'fullscreen', '0')
 Config.set('graphics', 'width', '1800')
 Config.set('graphics', 'height', '960')
+Config.set('graphics', 'fbo', 'hardware')
+Config.set('graphics', 'fullscreen', '1')
+Config.set('graphics', 'show_cursor', '0')
 
 captureFilePath = "captures/"
 capturePreviewFile = "preview.jpg"
