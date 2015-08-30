@@ -1,0 +1,3 @@
+[submodule "external/kivy"]
+	path = external/kivy
+	url = https://github.com/kivy/kivy.git
