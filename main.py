@@ -19,10 +19,10 @@ from kivy.config import Config
 
 # settings of the window
 #Config.set('graphics', 'fullscreen', '0')
-Config.set('graphics', 'width', '1800')
-Config.set('graphics', 'height', '960')
+#Config.set('graphics', 'width', '800')
+#Config.set('graphics', 'height', '960')
 Config.set('graphics', 'fbo', 'hardware')
-Config.set('graphics', 'fullscreen', '1')
+#Config.set('graphics', 'fullscreen', '1')
 Config.set('graphics', 'show_cursor', '0')
 
 captureFilePath = "captures/"
@@ -54,6 +54,18 @@ from kivy.graphics.opengl import *
 from kivy.graphics import *
 
 import mainapp
+
+# Raspberry GPIO
+import RPi.GPIO as GPIO
+GPIO.setmode(GPIO.BOARD)
+KEY_PIN = 40
+
+class EKeyState:
+	PRESSED = 'pressed'
+	RELEASED = 'released'
+	
+keyState = EKeyState.RELEASED
+GPIO.setup(KEY_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
 
 # initialize camera<
 ##C.leave_locked()
@@ -470,8 +482,8 @@ class CaptureApp(App):
 	# ------------------------------------------------------------------
 	def __init__(self, **kwargs):
 		super(CaptureApp, self).__init__(**kwargs)
-		self.keyboard = Window.request_keyboard(self.onKeyboardClosed, self)
-		self.keyboard.bind(on_key_down = self.onKeyDown)
+		#self.keyboard = Window.request_keyboard(self.onKeyboardClosed, self)
+		#self.keyboard.bind(on_key_down = self.onKeyDown)
 
 		
 		#self.camera = piggyphoto.camera()
@@ -559,10 +571,25 @@ class CaptureApp(App):
 		
 		# todo - this should be better called after scene graph is created and not just after some amount of time
 		Clock.schedule_once(lambda dt: self.preloadSlots(), 0.5)		 
+		Clock.schedule_interval(lambda dt: self.checkGPIO(), 1./20.)
 		
 		pass
 
 
+	# ------------------------------------------------------------------
+	def checkGPIO(self):
+		global keyState
+		
+		# no need to debounce, since this method is called every 100ms anyway
+		# and storing the last state gives us a debouncing automagically
+		if keyState == EKeyState.RELEASED and GPIO.input(KEY_PIN) == 0:
+			keyState = EKeyState.PRESSED
+			self.userEvent() #onKeyDown(None, (32,0), None, None)
+		if keyState == EKeyState.PRESSED and GPIO.input(KEY_PIN) == 1:
+			keyState = EKeyState.RELEASED
+			
+		pass
+		
 	# ------------------------------------------------------------------
 	def onKeyboardClosed(self):
 		pass
@@ -672,7 +699,7 @@ class CaptureApp(App):
 		else:
 			_setState()
 			
-		Clock.schedule_once(lambda dt: self.startSlideShow(), 3.)
+		Clock.schedule_once(lambda dt: self.startSlideShow(), 10.)
 					
 		pass
 		
@@ -710,8 +737,8 @@ class CaptureApp(App):
 				Clock.schedule_interval(self.updateSlideShow, 1.0 / 60.0)
 				pass
 			
-			Clock.schedule_once(lambda dt: self.fadeIn(0.5, _setAlpha), 0.05)
-			Clock.schedule_once(lambda dt: self.fadeOut(0.2), 0.55)
+			Clock.schedule_once(lambda dt: self.fadeIn(0.4, _setAlpha), 0.05)
+			Clock.schedule_once(lambda dt: self.fadeOut(0.2), 0.8)
 
 			# read in all available images and assign to them uniform probabilities
 			self.slideShowAvailableFiles = glob.glob(captureFilePath + "*.jpg")
@@ -804,3 +831,5 @@ class CaptureApp(App):
 # ------------------------------------------------------------------
 if __name__ == '__main__':	
 	CaptureApp().run()
+	GPIO.cleanup()
+	
