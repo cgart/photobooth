@@ -19,10 +19,10 @@ from kivy.config import Config
 
 # settings of the window
 #Config.set('graphics', 'fullscreen', '0')
-#Config.set('graphics', 'width', '800')
-#Config.set('graphics', 'height', '960')
+Config.set('graphics', 'width', '1400')
+Config.set('graphics', 'height', '960')
 Config.set('graphics', 'fbo', 'hardware')
-#Config.set('graphics', 'fullscreen', '1')
+Config.set('graphics', 'fullscreen', '0')
 Config.set('graphics', 'show_cursor', '0')
 
 captureFilePath = "captures/"
@@ -55,18 +55,26 @@ from kivy.graphics import *
 from kivy.cache import Cache
 
 import mainapp
+import imp
 
 # Raspberry GPIO
-import RPi.GPIO as GPIO
-GPIO.setmode(GPIO.BOARD)
-KEY_PIN = 40
-
+HasGPIO = False
+try:
+	imp.find_module('RPi.GPIO')
+	
+	import RPi.GPIO as GPIO
+	GPIO.setmode(GPIO.BOARD)
+	KEY_PIN = 40
+	HasGPIO = True
+	GPIO.setup(KEY_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
+except ImportError:
+	pass
+	
 class EKeyState:
 	PRESSED = 'pressed'
 	RELEASED = 'released'
 	
 keyState = EKeyState.RELEASED
-GPIO.setup(KEY_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
 
 # initialize camera<
 ##C.leave_locked()
@@ -527,8 +535,10 @@ class CaptureApp(App):
 	# ------------------------------------------------------------------
 	def __init__(self, **kwargs):
 		super(CaptureApp, self).__init__(**kwargs)
-		#self.keyboard = Window.request_keyboard(self.onKeyboardClosed, self)
-		#self.keyboard.bind(on_key_down = self.onKeyDown)
+		
+		if HasGPIO == False:
+			self.keyboard = Window.request_keyboard(self.onKeyboardClosed, self)
+			self.keyboard.bind(on_key_down = self.onKeyDown)
 
 		
 		#self.camera = piggyphoto.camera()
@@ -616,7 +626,9 @@ class CaptureApp(App):
 		
 		# todo - this should be better called after scene graph is created and not just after some amount of time
 		Clock.schedule_once(lambda dt: self.preloadSlots(), 0.5)		 
-		Clock.schedule_interval(lambda dt: self.checkGPIO(), 1./20.)
+		
+		if HasGPIO == True:
+			Clock.schedule_interval(lambda dt: self.checkGPIO(), 1./20.)
 		
 		pass
 
@@ -891,5 +903,7 @@ class CaptureApp(App):
 # ------------------------------------------------------------------
 if __name__ == '__main__':	
 	CaptureApp().run()
-	GPIO.cleanup()
+	
+	if HasGPIO == True:
+		GPIO.cleanup()
 	
