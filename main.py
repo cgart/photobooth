@@ -19,10 +19,10 @@ from kivy.config import Config
 
 # settings of the window
 #Config.set('graphics', 'fullscreen', '0')
-#Config.set('graphics', 'width', '1400')
-#Config.set('graphics', 'height', '960')
+Config.set('graphics', 'width', '1800')
+Config.set('graphics', 'height', '960')
 Config.set('graphics', 'fbo', 'hardware')
-#Config.set('graphics', 'fullscreen', '1')
+Config.set('graphics', 'fullscreen', '1')
 Config.set('graphics', 'show_cursor', '0')
 
 captureFilePath = "captures/"
@@ -396,8 +396,6 @@ class CapturedSlots(Widget):
 	num_y = 9
 	cell_w = 0
 	cell_h = 0
-	img_w = 640
-	img_h = 640 / 1.777
 	mutex = Lock()
 	root = None 
 	
@@ -417,8 +415,8 @@ class CapturedSlots(Widget):
 		files = glob.glob(captureFilePath + '/*.jpg')
 		files = sorted(files)
 
-		#print('screen: %dx%d' % (self.width, self.height))
-		#print('cells: %dx%d' % (self.cell_w, self.cell_h))
+		print('screen: %dx%d' % (self.width, self.height))
+		print('cells: %dx%d' % (self.cell_w, self.cell_h))
 		
 		# for each child of type picture load image
 		for child in self.layout.children:
@@ -426,9 +424,9 @@ class CapturedSlots(Widget):
 				self.pictureList.append(child)
 				
 		# update all slots
-		#if len(files) > 0:			
-			#for filename in files:
-			#	self.populateNextSlot(filename)
+		if len(files) > 0:			
+			for filename in files:
+				self.populateNextSlot(filename)
 	
 	# update image in the next slot - if all slots are full, then start from beginning		
 	def populateNextSlot(self, filename):
@@ -452,6 +450,7 @@ class CapturedSlots(Widget):
 		cell = (randint(0, self.num_x-1), randint(0, self.num_y-1))
 		poscntr = ((cell[0] + 0.5) * self.cell_w, (cell[1] + 0.5) * self.cell_h)
 		rot = uniform(-35,35)
+		
 		
 		# remove any images in the cell
 		if self.cells[cell[1]][cell[0]] != None:
@@ -617,6 +616,7 @@ class CaptureApp(App):
 	# ------------------------------------------------------------------
 	def build(self):		
 		
+		self.title = 'Photobooth'
 		self.previewImage = self.root.ids.camera_image
 		self.previewImage.setCamera(self.camera)	
 		
@@ -625,7 +625,7 @@ class CaptureApp(App):
 		self.slotImages.root = self.root 
 		
 		# todo - this should be better called after scene graph is created and not just after some amount of time
-		Clock.schedule_once(lambda dt: self.preloadSlots(), 0.5)		 
+		Clock.schedule_once(lambda dt: self.preloadSlots(), 1.0)		 
 		
 		if HasGPIO == True:
 			Clock.schedule_interval(lambda dt: self.checkGPIO(), 1./20.)
