@@ -220,7 +220,6 @@ class Preview(Widget):
 class CounterNum(Widget):
 	
 	label = ObjectProperty(None)
-	rect = None
 	texture_size = None
 	label_texture = ObjectProperty(None)
 	
@@ -242,6 +241,7 @@ class CounterNum(Widget):
 		size_new = (size_old[0] * 1.5, size_old[1] * 1.5)
 		pos = self.pos
 		anim = Animation(size=size_new, pos=(pos[0] - (size_new[0] - size_old[0])/2, pos[1] - (size_new[1] - size_old[1])/2), duration=0.25)
+		#anim = Animation(scale=1.5, pos=(pos[0] - (size_new[0] - size_old[0])/2, pos[1] - (size_new[1] - size_old[1])/2), duration=0.25)
 		anim.start(self)
 
 		pass
@@ -523,6 +523,7 @@ class CaptureApp(App):
 	slotImages = None
 	state = EState.LOADING
 	latestCapturedPicture = None
+	mutex = Lock()
 
 	# slideshow part
 	slideShowAvailableFiles = []
@@ -604,9 +605,9 @@ class CaptureApp(App):
 		def _disablePreview():
 			self.previewImage.alpha = 0
 			
-		Clock.schedule_once(lambda dt: self.fadeIn(), 0.1)
-		Clock.schedule_once(lambda dt: self.fadeOut(), 0.275)
-		Clock.schedule_once(lambda dt: _disablePreview(), 0.175)
+		Clock.schedule_once(lambda dt: self.fadeIn())
+		Clock.schedule_once(lambda dt: self.fadeOut(), 0.25)
+		Clock.schedule_once(lambda dt: _disablePreview(), 0.075)
 		Clock.schedule_once(lambda dt: _capture(),0.03)
 		
 		pass
@@ -670,14 +671,22 @@ class CaptureApp(App):
 	# ------------------------------------------------------------------
 	def userEvent(self):
 				
+		self.mutex.acquire()
+		
 		if self.state == EState.PREVIEW:
+			self.mutex.release()
 			self.runCounter()
 		
 		elif self.state == EState.INSPECTION:
+			self.mutex.release()
 			self.removeLatestImage()
 			
 		elif self.state == EState.SLIDESHOW:
+			self.mutex.release()
 			self.stopSlideShow()
+			
+		else:
+			self.mutex.release()
 			
 		pass
 	
@@ -710,7 +719,7 @@ class CaptureApp(App):
 		picture.center_x = self.root.width / 2
 		picture.center_y = self.root.height / 2
 		self.latestCapturedPicture = picture
-		self.root.add_widget(picture)
+		self.root.add_widget(picture, 1)
 			
 		# animate image to the background - event
 		Clock.schedule_once(lambda dt: self.removeLatestImage(), 3.0)
@@ -784,6 +793,8 @@ class CaptureApp(App):
 	# Start slide show
 	# ------------------------------------------------------------------
 	def startSlideShow(self):
+		
+		self.mutex.acquire()
 			
 		# we can only start from a preview state
 		if self.state == EState.PREVIEW:
@@ -808,6 +819,8 @@ class CaptureApp(App):
 			self.slideShowAvailableFiles = glob.glob(captureFilePath + "*.jpg")
 			self.slideShowAvailableFileProbabilities = [1.0 for i in xrange(len(self.slideShowAvailableFiles))]
 			
+		self.mutex.release()
+		
 		pass
 		
 	# ------------------------------------------------------------------
