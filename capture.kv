@@ -26,14 +26,15 @@ FloatLayout:
             pos: root.pos
             alpha: picture_slots.alpha
             
-            #canvas:
-            #    Color:
-            #        rgba: 1,1,1,0.8
-            #    Rectangle:
-            #        source: 'data/background.jpg'
-            #        pos: self.pos
-            #        size: self.size                
-            
+            canvas:            
+                Color:
+                    rgba: 1,1,1,picture_slots.alpha
+                Mesh:
+                    vertices: self.vertices
+                    indices: range(len(self.vertices) / 4)
+                    texture: self.texture
+                    mode: 'triangle_fan'
+                        
     Preview:
         id: camera_image
         
@@ -108,7 +109,7 @@ FloatLayout:
                 
     canvas:            
         Color:
-            rgba: 1,1,1,1
+            rgba: 1,1,1,root.alpha
         Mesh:
             vertices: root.vertices
             indices: range(len(root.vertices) / 4)

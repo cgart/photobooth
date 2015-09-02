@@ -52,6 +52,7 @@ from kivy.graphics.transformation import Matrix
 from kivy.graphics.shader import *
 from kivy.graphics.opengl import *
 from kivy.graphics import *
+from kivy.cache import Cache
 
 import mainapp
 
@@ -71,59 +72,101 @@ GPIO.setup(KEY_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 ##C.leave_locked()
 
 
-class FboFloatLayout(FloatLayout):
+class FboFloatLayout(Widget):
 
 	texture = ObjectProperty(None, allownone=True)
-
-	alpha = NumericProperty(1)
-
+	vertices = ListProperty([])
+	
+	fbo = None
+	tmp_fbo = None 
+	
 	def __init__(self, **kwargs):
 		
 		self.canvas = Canvas()
 		
 		with self.canvas:
 			self.fbo = Fbo(size=self.size)
-			self.fbo_color = Color(1, 1, 1, 1)
-			self.fbo_background = Rectangle(source = 'data/background.jpg', size=self.size, pos=self.pos)
-			self.fbo_rect = Rectangle()
+			
+		super(FboFloatLayout, self).__init__(**kwargs)
 
+	# --
+	# preload FBO with background texture
+	def initFbo(self):
+		
 		with self.fbo:
 			ClearColor(0,0,0,0)
 			ClearBuffers()
-			
-		# wait that all the instructions are in the canvas to set texture
+			Rectangle(source = 'data/background.jpg', size=self.size, pos=self.pos)
+
 		self.texture = self.fbo.texture
-		super(FboFloatLayout, self).__init__(**kwargs)
+				
+	# --
+	# add the content of the widget to the FBO
+	# this will literally render the widget into the texture
+	def render_widget(self, widget):
 
-	def add_widget(self, *largs):
+		# create an FBO to render the widget to
+		self.tmp_fbo = Fbo(size = self.size)
+		self.tmp_fbo.add(ClearColor(0,0,0,0))
+		self.tmp_fbo.add(ClearBuffers())
+		self.tmp_fbo.add(widget.canvas)
+		self.tmp_fbo.draw()
+
+		# render a rectangle in the main fbo containing the content from the widget
+		with self.fbo:
+			Color(1,1,1,1)
+			Rectangle(texture=self.tmp_fbo.texture, size=self.tmp_fbo.size)
+					
+	#def add_widget(self, *largs):
 		# trick to attach graphics instruction to fbo instead of canvas
-		canvas = self.canvas
-		self.canvas = self.fbo
-		ret = super(FboFloatLayout, self).add_widget(*largs)
-		self.canvas = canvas
-		return ret
+	#	canvas = self.canvas
+	#	self.canvas = self.fbo
+	#	ret = super(FboFloatLayout, self).add_widget(*largs)
+	#	self.canvas = canvas
+		
+		# remove widget after next frame, this makes sure that 
+		# we do not use the widget for more than one frame
+		#Clock.schedule_once(lambda dt: self.remove_widget(*largs))
 
-	def remove_widget(self, *largs):
-		canvas = self.canvas
-		self.canvas = self.fbo
-		super(FboFloatLayout, self).remove_widget(*largs)
-		self.canvas = canvas
+	#	return ret
+
+	#def remove_widget(self, *largs):
+	#	canvas = self.canvas
+	#	self.canvas = self.fbo
+	#	super(FboFloatLayout, self).remove_widget(*largs)
+	#	self.canvas = canvas
 
 	def on_size(self, instance, value):
+		self.size = value 
+		
 		self.fbo.size = value
-		self.texture = self.fbo.texture
-		self.fbo_rect.size = value
-		self.fbo_background.size = value
+		
+		#self.fbo_rect.size = value
+		#self.fbo_background.size = value
+		#self.fbo_rect.texture = self.fbo.texture
+		
+		# setup simple quad mesh to be rendered
+		# the quad is used for actual resizing
+		self.vertices = []
+		self.vertices.extend([0,0,0,0])
+		self.vertices.extend([0,self.height,0,1])
+		self.vertices.extend([self.width,self.height,1,1])
+		self.vertices.extend([self.width,0,1,0])
 
-	def on_pos(self, instance, value):
-		self.fbo_rect.pos = value
-		self.fbo_background.pos = value
-
-	def on_texture(self, instance, value):
-		self.fbo_rect.texture = value
-
-	def on_alpha(self, instance, value):
-		self.fbo_color.rgba = (1, 1, 1, value)
+		#self.updateFbo()		
+		self.initFbo()
+		
+	#def on_pos(self, instance, value):
+		#self.fbo_rect.pos = value
+		#self.fbo_background.pos = value
+	#	pass
+		
+	#def on_texture(self, instance, value):
+		#self.texture = value
+	#	pass
+		
+	#def on_alpha(self, instance, value):
+	#	self.fbo_color.rgba = (1, 1, 1, value)
         
 # ----------------------------------------------------------------------
 # Preview widget - showing the current preview picture
@@ -207,121 +250,88 @@ class Picture(Scatter):
 	
 	vertices = ListProperty([])
 	
-	fbo_texture = ObjectProperty()
+	fbo_texture = ObjectProperty(None)
 	fbo = None
 
 	border_image = None
 	keep_aspect = True
 	
 	aspectRatio = 1.0
-	#rotation = 0.
-	
+
+	# --
 	def __init__(self, filename=None, onload=None, **kwargs):
 		
-		# setup FBO to render the content of the picture into a texture
-		self.canvas = Canvas() #RenderContext(compute_normal_mat=True)
-		#self.canvas.shader.source = 'data/textured_mesh.glsl'
+		self.canvas = Canvas()
+		
 		with self.canvas:
-			self.fbo = Fbo(size=self.size)
+			self.fbo = Fbo(size=(512,512))
 			self.fbo.add_reload_observer(self.updateFbo)
-			#PushMatrix()			
-			#ClearColor(0, 0, 0, 0)
-			#ClearBuffers()
-			#Color(1,1,1,self.alpha)
-			#self.renderQuad()
-			#PopMatrix()
-
+			
 		self.border_image = CoreImage('data/shadow32.png')
 		self.img_texture = Texture.create(size=(128,128), colorfmt="rgba")		
 				
 		self.alpha = 0		
-		self.updateFbo()
+		self.fbo_texture = self.fbo.texture
 		
 		super(Picture, self).__init__(**kwargs)		
 		
 		self.loadImage(filename, onload)
-
-		#Clock.schedule_interval(self.update_glsl, 1 / 60.)
-	
-	'''
-	def renderQuad(self):
-		PushMatrix()
-
-		indices = [0, 1, 2, 3, 0, 2]
-		vertex_format = [
-			('v_pos', 3, 'float'),  # <--- These are GLSL shader variable names.
-			('v_color', 4, 'float'),
-			('v_uv', 2, 'float'),
-		]
-		vertices = [
-		  10.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0,
-		  10.0, 200.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0,
-		  200.0, 200.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-		  200.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0,
-		]
-
-		UpdateNormalMatrix()
-		self.mesh = Mesh(
-			vertices=vertices,
-			indices=indices,
-			fmt=vertex_format,
-			mode='triangles',
-		)
-		self.mesh.texture = self.img_texture
-		PopMatrix()
-        		
-	def update_glsl(self, *largs):
-		model = Matrix().look_at(0,0,-10,0,0,0,0,1,0)
-		#proj = Matrix().perspective(70., 1.3, 0.1, 100)
-		proj = Matrix().view_clip(0, self.width, 0, self.height, 1, 100, -1)
-		self.canvas['projection_mat'] = proj
-		#self.canvas['modelview_mat'] = model
-		return True
-	'''
-        	
-	def updateFbo(self):
 		
+
+	# --
+	def updateFbo(self):
+			
 		with self.fbo:
 			ClearColor(0, 0, 0, 0)
 			ClearBuffers()
-			Color(1,1,1,self.alpha)
-			BorderImage(texture=self.border_image.texture, border=(36,36,36,36), size = (self.width, self.height), pos = (0,0))
-			Rectangle(texture=self.img_texture, size = (self.width-72, self.height-72), pos = (36,36))
-					
+			Color(1,1,1,1)
+			BorderImage(texture=self.border_image.texture, border=(36,36,36,36), size = (self.fbo.size[0], self.fbo.size[1]), pos=(0,0))
+			Rectangle(texture=self.img_texture, size=(self.fbo.size[0]-72, self.fbo.size[1]-72), pos=(36,36))
+							
 		self.fbo_texture = self.fbo.texture
-		pass
 		
+		pass
+
+	# --
 	def on_size(self, instance, value):
+
+		# change the underlying size property
+		newAspectRatio = float(value[1]) / float(value[0])
 		
 		if self.keep_aspect:
 			value[1] = value[0] * self.aspectRatio
-			
-		self.fbo.size = value
+			newAspectRatio = self.aspectRatio
+						
 		self.size = value
 		
 		# setup simple quad mesh to be rendered
+		# the quad is used for actual resizing
 		self.vertices = []
 		self.vertices.extend([0,0,0,0])
 		self.vertices.extend([0,self.height,0,1])
 		self.vertices.extend([self.width,self.height,1,1])
 		self.vertices.extend([self.width,0,1,0])
-		
-		self.updateFbo()		
-		pass
 
 		
-	def on_alpha(self, instance, value):		
-		self.updateFbo()		
+		# if the aspect ratio of the underlying FBO is not the same as the aspect
+		# ratio of the new size, then change the size of the FBO
+		fboAspectRatio = float(self.fbo.size[1]) / float(self.fbo.size[0])
+		
+		if abs(fboAspectRatio - newAspectRatio) > 0.1:
+			fboSize = (self.fbo.size[0], self.fbo.size[1] * newAspectRatio)
+			self.fbo.size = fboSize
+			self.updateFbo()
+			
 		pass
-		
-		
+
+	# --
 	def loadImage(self, filename, onload = None):
 		self.filename = filename
 		if filename != None:
 			self.onLoadCallback = onload
 				
 			proxyImage = Loader.image(filename)
-			
+					
 			# this is totally stupid behaviour of Kivy
 			# the docs suggest to bind proxy image's on_load method to a callback
 			# to indicate when image is loaded. However, when image is already
@@ -332,13 +342,30 @@ class Picture(Scatter):
 				proxyImage.bind(on_load=self._image_loaded)
 			else:
 				self._image_loaded(proxyImage)
+
+	# --
+	# All used memory except of the FBO texture is released. The image
+	# can still be used, however, properties could not be changed
+	def releaseMemory(self):
+		
+		self.img_texture = False
+		self.border_image = False
+		self.fbo_texture = Texture.create(size=(2,2), colorfmt="rgba")
 				
+		# clear up cache
+		Cache.remove('kv.image')
+		Cache.remove('kv.texture')
+		Cache.remove('kv.loader')
+			
+		pass
+		
+	# --
 	def _image_loaded(self, proxyImage):
 		
 		if proxyImage.image.texture:
 			self.img_texture = proxyImage.image.texture
 			self.aspectRatio = float(proxyImage.image.height) / float(proxyImage.image.width)
-			self.size = proxyImage.image.size 
+			self.updateFbo()
 			
 			anim = Animation(alpha=1, duration=0.2)
 			anim.start(self)
@@ -363,6 +390,7 @@ class CapturedSlots(Widget):
 	img_w = 640
 	img_h = 640 / 1.777
 	mutex = Lock()
+	root = None 
 	
 	def __init__(self, **kwargs):
 		super(CapturedSlots, self).__init__(**kwargs)
@@ -399,9 +427,9 @@ class CapturedSlots(Widget):
 
 		# add new picture spread randomly over the screen
 		newpic = Picture()
-		newpic.loadImage(filename)
 		newpic.center_x = self.width/2
 		newpic.center_y = self.height/2
+		newpic.filename = filename 
 		
 		self.addExistingImage(newpic)
 
@@ -409,7 +437,7 @@ class CapturedSlots(Widget):
 	# the image will be animated from its current position and scale down
 	# to the required by the slot
 	def addExistingImage(self, picture, onImageRenderedInto = None):
-		
+
 		self.mutex.acquire()
 		
 		# find a random cell where we put the image into
@@ -420,21 +448,38 @@ class CapturedSlots(Widget):
 		# remove any images in the cell
 		if self.cells[cell[1]][cell[0]] != None:
 			wdgt = self.cells[cell[1]][cell[0]]
-			self.layout.remove_widget(wdgt)
+			#self.layout.remove_widget(wdgt)
 		
-		# add image as widget into the slot layout
+		# add image as widget into the main root first, because
+		# we want to keep it animated for a while
 		self.cells[cell[1]][cell[0]] = picture
-		self.layout.add_widget(picture)
+		self.root.add_widget(picture)
 		
-		# start animation of the image to be positioned in the slot
-		anim = Animation(center_x=poscntr[0], center_y=poscntr[1], width = 800, rotation= randint(0,2) * 360 + rot, duration=0.7)
-		anim.start(picture)
-		
-		if onImageRenderedInto != None:
-			anim.bind(on_complete = onImageRenderedInto)
-			
 		self.mutex.release()
 		
+		# start animation of the image to be positioned in the slot
+		# when animation stops we burn the image into the FloatLayout
+		def _animate(pic):
+			anim = Animation(center_x=poscntr[0], center_y=poscntr[1], width = 800, rotation = randint(0,2) * 360 + rot, duration=1.7)
+			anim.start(pic)
+
+			# ensure that the widget 
+			# make sure that we render the picture into the main layout only once 
+			# and then remove the used texture - this ensures smaller memory footprint
+			def _addImageToLayout(anim, pic, on_cmpl):
+				self.root.remove_widget(pic)
+				self.layout.render_widget(pic)
+				
+				Clock.schedule_once(lambda dt: pic.releaseMemory(), 1.)
+				
+				if on_cmpl != None:
+					on_cmpl(anim, pic)
+				
+			anim.bind(on_complete = lambda a,w: _addImageToLayout(a,w,onImageRenderedInto))
+			
+			
+		picture.loadImage(picture.filename, lambda pic: _animate(pic))
+							
 		pass
 		
 	pass
@@ -561,13 +606,13 @@ class CaptureApp(App):
 		
 	# ------------------------------------------------------------------
 	def build(self):		
-		root = self.root
 		
-		self.previewImage = root.ids.camera_image
+		self.previewImage = self.root.ids.camera_image
 		self.previewImage.setCamera(self.camera)	
 		
-		self.whiteBillboard = root.ids.white_overlay
-		self.slotImages = root.ids.picture_slots		
+		self.whiteBillboard = self.root.ids.white_overlay
+		self.slotImages = self.root.ids.picture_slots		
+		self.slotImages.root = self.root 
 		
 		# todo - this should be better called after scene graph is created and not just after some amount of time
 		Clock.schedule_once(lambda dt: self.preloadSlots(), 0.5)		 
@@ -596,6 +641,8 @@ class CaptureApp(App):
 		
 	# ------------------------------------------------------------------
 	def onKeyDown(self, keyboard, keycode, text, modifiers):
+		
+		Cache.print_usage()
 		
 		if keycode[0] == 32:
 			
@@ -631,6 +678,11 @@ class CaptureApp(App):
 			self.root.remove_widget(self.latestCapturedPicture)
 			self.slotImages.addExistingImage(self.latestCapturedPicture, lambda anim,pic: self.startPreview())
 			self.latestCapturedPicture = None
+
+			# clear up cache
+			Cache.remove('kv.image')
+			Cache.remove('kv.texture')
+			Cache.remove('kv.loader')
 			
 		pass
 		
@@ -642,9 +694,9 @@ class CaptureApp(App):
 		self.state = EState.INSPECTION
 		
 		# make picture visible
+		picture.size = (1000., 1000. * picture.aspectRatio)
 		picture.center_x = self.root.width / 2
 		picture.center_y = self.root.height / 2
-		picture.size = (1000., 1000. * picture.aspectRatio)
 		self.latestCapturedPicture = picture
 		self.root.add_widget(picture)
 			
@@ -765,7 +817,7 @@ class CaptureApp(App):
 				# remove all picture widgets
 				for (pic,speed) in self.slideShowCurrentPictures:
 					self.root.remove_widget(pic)
-					
+									
 				pass
 				
 			Clock.schedule_once(lambda dt: self.fadeIn(0.3, _setAlpha), 0.05)
@@ -817,11 +869,19 @@ class CaptureApp(App):
 			if pic.y < self.root.height:
 				validPictures.append( (pic,speed) )
 			else:
+				
+				def _removeImage(w):
+					Cache.remove('kv.image')
+					Cache.remove('kv.texture')
+					Cache.remove('kv.loader')
+					self.root.remove_widget(w)
+					
 				anim = Animation(alpha=0, duration=0.5)
-				anim.bind(on_complete = lambda a,w: self.root.remove_widget(w))
+				anim.bind(on_complete = lambda a,w: _removeImage(w))
 				anim.start(pic)
 				
 		self.slideShowCurrentPictures = validPictures
+		
 		
 		# continue updates
 		return True
