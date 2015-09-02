@@ -19,10 +19,10 @@ from kivy.config import Config
 
 # settings of the window
 #Config.set('graphics', 'fullscreen', '0')
-Config.set('graphics', 'width', '1400')
-Config.set('graphics', 'height', '960')
+#Config.set('graphics', 'width', '1400')
+#Config.set('graphics', 'height', '960')
 Config.set('graphics', 'fbo', 'hardware')
-Config.set('graphics', 'fullscreen', '0')
+#Config.set('graphics', 'fullscreen', '1')
 Config.set('graphics', 'show_cursor', '0')
 
 captureFilePath = "captures/"
@@ -60,13 +60,14 @@ import imp
 # Raspberry GPIO
 HasGPIO = False
 try:
-	imp.find_module('RPi.GPIO')
-	
+	imp.find_module('RPi')	
 	import RPi.GPIO as GPIO
 	GPIO.setmode(GPIO.BOARD)
 	KEY_PIN = 40
 	HasGPIO = True
 	GPIO.setup(KEY_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
+	
+	print 'GPIO library found'
 except ImportError:
 	pass
 	
@@ -425,10 +426,9 @@ class CapturedSlots(Widget):
 				self.pictureList.append(child)
 				
 		# update all slots
-		if len(files) > 0:			
-			#for pic in self.pictureList:
-			for filename in files:
-				self.populateNextSlot(filename)
+		#if len(files) > 0:			
+			#for filename in files:
+			#	self.populateNextSlot(filename)
 	
 	# update image in the next slot - if all slots are full, then start from beginning		
 	def populateNextSlot(self, filename):
