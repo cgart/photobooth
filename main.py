@@ -401,8 +401,17 @@ class CaptureApp(App):
 			
 		# we can only start from a preview state
 		if self.state == EState.PREVIEW:
-			self.state = EState.SLIDESHOW
 										
+			# read in all available images and assign to them uniform probabilities
+			self.slideShowAvailableFiles = glob.glob(captureSnapshotPath + "*.jpg")
+			self.slideShowAvailableFileProbabilities = [1.0 for i in xrange(len(self.slideShowAvailableFiles))]
+			
+			if len(self.slideShowAvailableFiles) == 0:
+				self.mutex.release()
+				return
+				
+			self.state = EState.SLIDESHOW
+			
 			# just because python does not support assignments in the ambda
 			def _setAlpha():
 				self.slotImages.alpha = 0
@@ -419,9 +428,6 @@ class CaptureApp(App):
 			Clock.schedule_once(lambda dt: self.fadeIn(0.4, _setAlpha), 0.05)
 			Clock.schedule_once(lambda dt: self.fadeOut(0.2), 0.8)
 
-			# read in all available images and assign to them uniform probabilities
-			self.slideShowAvailableFiles = glob.glob(captureSnapshotPath + "*.jpg")
-			self.slideShowAvailableFileProbabilities = [1.0 for i in xrange(len(self.slideShowAvailableFiles))]
 			
 		self.mutex.release()
 		

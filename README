@@ -4,3 +4,20 @@ Requirements:
  - Kivy 1.9.1 (found in externals)
  - numpy >= 1.7
  - Imagemagick (required for convert system command)
+ - libgphoto2
+
+Prerequisities:
+
+Per default gphoto installs additional hook ups to the gvfs (gnome virtual
+file system). This is of course super usefull when accessing the camera from
+a desktop environment, but less when we want to run scripts controlling the
+camera. Hence it is recommended to disable gphoto2's gvfs backend with:
+
+sudo rm /usr/share/dbus-1/services/org.gtk.Private.GPhoto2VolumeMonitor.service
+sudo rm /usr/share/gvfs/mounts/gphoto2.mount
+sudo rm /usr/share/gvfs/remote-volume-monitors/gphoto2.monitor
+sudo rm /usr/lib/gvfs/gvfs-gphoto2-volume-monitor
+
+ATTENTION: If you would ever need to access the camera using gvfs, you would
+need to reenable the hooks.
+
