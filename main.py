@@ -322,7 +322,9 @@ class CaptureApp(App):
 	# Start counter for capture
 	# ------------------------------------------------------------------
 	def captureImage(self):
-		
+
+		self.mutex.acquire()
+				
 		self.state = EState.CAPTURING
 		
 		# disable preview images
@@ -334,6 +336,8 @@ class CaptureApp(App):
 		# start whiteout effect slightly later to fit to the shutter of the camera
 		Clock.schedule_once(lambda dt: self.fadeIn(0.1, self.previewImage.hide()), cameraShutterLatency)
 		Clock.schedule_once(lambda dt: self.fadeOut(), cameraShutterLatency + 0.2)
+		
+		self.mutex.release()
 		
 		pass
 				
@@ -354,19 +358,28 @@ class CaptureApp(App):
 		
 		# update loop for the preview frame
 		def _updatePreview():			
+			self.mutex.acquire()
+			
 			self.previewImage.updateFrame()
 			
+			ret = True
 			if self.state != EState.PREVIEW and self.state != EState.COUNTER:
-				return False
+				ret = False
 
-			return True
+			self.mutex.release()
+			
+			return ret
 			
 		# set state and start frame updates
 		def _setState():
+			self.mutex.acquire()
+			
 			self.state = EState.PREVIEW
 			self.previewImage.show()
 			self.previewImage.enablePreview()
 			Clock.schedule_interval(lambda dt: _updatePreview(), 1.0 / 20.0)
+			
+			self.mutex.release()
 				
 		if doFadeIn:
 			anim = Animation(alpha=1.0, t='in_cubic', duration=1.0)
@@ -384,6 +397,7 @@ class CaptureApp(App):
 	# Populate background with all available images
 	# ------------------------------------------------------------------
 	def preloadSlots(self):
+		
 		
 		self.state = EState.LOADING		
 		self.startPreview()
@@ -437,7 +451,9 @@ class CaptureApp(App):
 	# Stop slide show
 	# ------------------------------------------------------------------
 	def stopSlideShow(self):
-				
+
+		self.mutex.acquire()
+						
 		# slide show can only be stopped if we are in slideshow state	
 		if self.state == EState.SLIDESHOW:
 			
@@ -457,8 +473,11 @@ class CaptureApp(App):
 				
 			Clock.schedule_once(lambda dt: self.fadeIn(0.3, _setAlpha), 0.05)
 			Clock.schedule_once(lambda dt: self.fadeOut(0.1), 0.35)
-			
+	
+		self.mutex.release()
+				
 		pass
+	
 		
 	# ------------------------------------------------------------------
 	# Update slide show
