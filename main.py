@@ -1,21 +1,32 @@
 #!/usr/bin/python
 
-import glob
-from random import randint
-from os.path import join, dirname
-import piggyphoto
-import time
-import datetime
-from functools import partial
-from random import randrange, uniform
-from threading import Thread, Lock
-import numpy as np
-
-
-import kivy
-kivy.require('1.9.1')
-
 from kivy.config import Config
+
+
+# ----------------------------------------------------------------------
+# Settings
+# ----------------------------------------------------------------------
+
+# Folder where all full-res captures from camera goes
+captureFilePath = "captures/"
+
+# Folder with resized captures (smaller for faster loading)
+captureSnapshotPath = "snapshots/"
+
+# Filename for the preview image from the camera to be updated
+capturePreviewFile = "preview.jpg"
+
+# Width of the snapshot files
+captureSnapshowWidth = 600
+
+# Width of the captued image, when previewing on the screen (height is chosen according to the aspect ratio)
+inspectImageWidth = 1200
+
+# Time for the camera shutter [sec]
+cameraShutterLatency = 1.2
+
+# Path to the Imagemagick's convert executable
+convertCmd = "/usr/bin/convert"
 
 # settings of the window
 #Config.set('graphics', 'fullscreen', '0')
@@ -25,484 +36,67 @@ Config.set('graphics', 'fbo', 'hardware')
 Config.set('graphics', 'fullscreen', '1')
 Config.set('graphics', 'show_cursor', '0')
 
-captureFilePath = "captures/"
-capturePreviewFile = "preview.jpg"
 
+# ----------------------------------------------------------------------
+# Libraries
+# ----------------------------------------------------------------------
+
+# system librareis
+import glob
+from os.path import join, dirname
+import piggyphoto
+import time
+import datetime
+from threading import Thread, Lock
+import numpy as np
+import imp
+from random import randrange, uniform, randint
+from subprocess import call
+
+
+# Kivy libraries
+import kivy
+kivy.require('1.9.1')
 from kivy.app import App
 from kivy.logger import Logger
-from kivy.uix.scatter import Scatter
 from kivy.uix.widget import Widget
-from kivy.properties import StringProperty
-from kivy.properties import NumericProperty
 from kivy.clock import Clock
-from kivy.core.image import Image as CoreImage
-from kivy.uix.image import Image
-#from kivy.uix.image import AsyncImage
-from kivy.uix.floatlayout import FloatLayout
-from kivy.properties import ListProperty, ObjectProperty
-from kivy.loader import Loader
-from kivy.core.text import Label as CoreLabel
-from kivy.graphics import Color, Rectangle, BorderImage
-from kivy.graphics.texture import Texture
 from kivy.core.window import Window
 from kivy.animation import Animation
-#from kivy.graphics import Color, Rectangle, Canvas, ClearBuffers, ClearColor
-from kivy.graphics.fbo import Fbo
-from kivy.graphics.transformation import Matrix
-from kivy.graphics.shader import *
-from kivy.graphics.opengl import *
-from kivy.graphics import *
 from kivy.cache import Cache
 
-import mainapp
-import imp
+
+# Photobooth application
+from mainapp.fbolayout import FboFloatLayout
+from mainapp.preview import Preview
+from mainapp.slothandler import CapturedSlots
+from mainapp.picture import Picture
+from mainapp.counter import CounterNum
+from mainapp.helpers import WhiteBillboard
+
+
 
 # Raspberry GPIO
-HasGPIO = False
+HasRpiGPIO = False
 try:
 	imp.find_module('RPi')	
 	import RPi.GPIO as GPIO
 	GPIO.setmode(GPIO.BOARD)
 	KEY_PIN = 40
-	HasGPIO = True
+	HasRpiGPIO = True
 	GPIO.setup(KEY_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
 	
-	print 'GPIO library found'
+	print 'RaspberryPi GPIO library found'
 except ImportError:
 	pass
-	
+
+
+
+# ----------------------------------------------------------------------
 class EKeyState:
 	PRESSED = 'pressed'
 	RELEASED = 'released'
-	
-keyState = EKeyState.RELEASED
-
-# initialize camera<
-##C.leave_locked()
-
-
-class FboFloatLayout(Widget):
-
-	texture = ObjectProperty(None, allownone=True)
-	vertices = ListProperty([])
-	
-	fbo = None
-	tmp_fbo = None 
-	
-	def __init__(self, **kwargs):
-		
-		self.canvas = Canvas()
-		
-		with self.canvas:
-			self.fbo = Fbo(size=self.size)
-			
-		super(FboFloatLayout, self).__init__(**kwargs)
-
-	# --
-	# preload FBO with background texture
-	def initFbo(self):
-		
-		with self.fbo:
-			ClearColor(0,0,0,0)
-			ClearBuffers()
-			Rectangle(source = 'data/background.jpg', size=self.size, pos=self.pos)
-
-		self.texture = self.fbo.texture
 				
-	# --
-	# add the content of the widget to the FBO
-	# this will literally render the widget into the texture
-	def render_widget(self, widget):
-
-		# create an FBO to render the widget to
-		self.tmp_fbo = Fbo(size = self.size)
-		self.tmp_fbo.add(ClearColor(0,0,0,0))
-		self.tmp_fbo.add(ClearBuffers())
-		self.tmp_fbo.add(widget.canvas)
-		self.tmp_fbo.draw()
-
-		# render a rectangle in the main fbo containing the content from the widget
-		with self.fbo:
-			Color(1,1,1,1)
-			Rectangle(texture=self.tmp_fbo.texture, size=self.tmp_fbo.size)
-					
-	#def add_widget(self, *largs):
-		# trick to attach graphics instruction to fbo instead of canvas
-	#	canvas = self.canvas
-	#	self.canvas = self.fbo
-	#	ret = super(FboFloatLayout, self).add_widget(*largs)
-	#	self.canvas = canvas
-		
-		# remove widget after next frame, this makes sure that 
-		# we do not use the widget for more than one frame
-		#Clock.schedule_once(lambda dt: self.remove_widget(*largs))
-
-	#	return ret
-
-	#def remove_widget(self, *largs):
-	#	canvas = self.canvas
-	#	self.canvas = self.fbo
-	#	super(FboFloatLayout, self).remove_widget(*largs)
-	#	self.canvas = canvas
-
-	def on_size(self, instance, value):
-		self.size = value 
-		
-		self.fbo.size = value
-		
-		#self.fbo_rect.size = value
-		#self.fbo_background.size = value
-		#self.fbo_rect.texture = self.fbo.texture
-		
-		# setup simple quad mesh to be rendered
-		# the quad is used for actual resizing
-		self.vertices = []
-		self.vertices.extend([0,0,0,0])
-		self.vertices.extend([0,self.height,0,1])
-		self.vertices.extend([self.width,self.height,1,1])
-		self.vertices.extend([self.width,0,1,0])
-
-		#self.updateFbo()		
-		self.initFbo()
-		
-	#def on_pos(self, instance, value):
-		#self.fbo_rect.pos = value
-		#self.fbo_background.pos = value
-	#	pass
-		
-	#def on_texture(self, instance, value):
-		#self.texture = value
-	#	pass
-		
-	#def on_alpha(self, instance, value):
-	#	self.fbo_color.rgba = (1, 1, 1, value)
-        
-# ----------------------------------------------------------------------
-# Preview widget - showing the current preview picture
-# ----------------------------------------------------------------------
-class Preview(Widget):
-	
-	camera = None
-	preview_image = ObjectProperty()
-	image = Image(source = capturePreviewFile)
-	alpha = NumericProperty()
-			
-	def __init__(self, **kwargs):
-		super(Preview, self).__init__(**kwargs)
-		self.alpha = 0
-		
-	# ------------------------------------------------------------------
-	def setCamera(self, camera):
-		self.camera = camera
-		self.alpha = 0
-		if camera != None:
-			self.camera.capture_preview(capturePreviewFile)
-		pass
-			
-	# ------------------------------------------------------------------
-	#def onNewFrame(self, proxyImage):
-	#	self.preview_image.texture = proxyImage.image.texture
-	#	pass
-		
-	# ------------------------------------------------------------------
-	def updateFrame(self):
-		
-		if self.camera != None and self.alpha > 0.1:
-			self.camera.capture_preview(capturePreviewFile)
-		self.image.reload()
-		self.preview_image.texture = self.image.texture
-
-		pass
-
-# ----------------------------------------------------------------------
-# Widget animating a number in the center of the screen
-# ----------------------------------------------------------------------
-class CounterNum(Widget):
-	
-	label = ObjectProperty(None)
-	texture_size = None
-	label_texture = ObjectProperty(None)
-	
-	def __init__(self, num, **kwargs):
-		super(CounterNum, self).__init__(**kwargs)
-		
-		# generate texture containing the desired label
-		self.label = CoreLabel(text=str(num), font_size=500, color=(1,1,1,1))
-		self.label.refresh()		
-		self.texture_size = list(self.label.texture.size)
-		self.label_texture = self.label.texture
-		
-		pass
-		
-	def animate(self):
-		
-		# animate widget
-		size_old = self.texture_size
-		size_new = (size_old[0] * 1.5, size_old[1] * 1.5)
-		pos = self.pos
-		anim = Animation(size=size_new, pos=(pos[0] - (size_new[0] - size_old[0])/2, pos[1] - (size_new[1] - size_old[1])/2), duration=0.5)
-		#anim = Animation(scale=1.5, pos=(pos[0] - (size_new[0] - size_old[0])/2, pos[1] - (size_new[1] - size_old[1])/2), duration=0.25)
-		anim.start(self)
-
-		pass
-		
-		
-# ----------------------------------------------------------------------
-# Picture captured with camera
-# ----------------------------------------------------------------------
-class Picture(Scatter):
-	
-	img_texture = ObjectProperty()
-	alpha = NumericProperty()
-	onLoadCallback = None
-	filename = None
-	
-	vertices = ListProperty([])
-	
-	fbo_texture = ObjectProperty(None)
-	fbo = None
-
-	border_image = None
-	keep_aspect = True
-	
-	aspectRatio = 1.0
-
-	# --
-	def __init__(self, filename=None, onload=None, **kwargs):
-		
-		self.canvas = Canvas()
-		
-		with self.canvas:
-			self.fbo = Fbo(size=(512,512))
-			self.fbo.add_reload_observer(self.updateFbo)
-			
-		self.border_image = CoreImage('data/shadow32.png')
-		self.img_texture = Texture.create(size=(128,128), colorfmt="rgba")		
-				
-		self.alpha = 0		
-		self.fbo_texture = self.fbo.texture
-		
-		super(Picture, self).__init__(**kwargs)		
-		
-		self.loadImage(filename, onload)
-		
-
-	# --
-	def updateFbo(self):
-			
-		with self.fbo:
-			ClearColor(0, 0, 0, 0)
-			ClearBuffers()
-			Color(1,1,1,1)
-			BorderImage(texture=self.border_image.texture, border=(36,36,36,36), size = (self.fbo.size[0], self.fbo.size[1]), pos=(0,0))
-			Rectangle(texture=self.img_texture, size=(self.fbo.size[0]-72, self.fbo.size[1]-72), pos=(36,36))
-							
-		self.fbo_texture = self.fbo.texture
-		
-		pass
-
-	# --
-	def on_size(self, instance, value):
-
-		# change the underlying size property
-		newAspectRatio = float(value[1]) / float(value[0])
-		
-		if self.keep_aspect:
-			value[1] = value[0] * self.aspectRatio
-			newAspectRatio = self.aspectRatio
-						
-		self.size = value
-		
-		# setup simple quad mesh to be rendered
-		# the quad is used for actual resizing
-		self.vertices = []
-		self.vertices.extend([0,0,0,0])
-		self.vertices.extend([0,self.height,0,1])
-		self.vertices.extend([self.width,self.height,1,1])
-		self.vertices.extend([self.width,0,1,0])
-
-		
-		# if the aspect ratio of the underlying FBO is not the same as the aspect
-		# ratio of the new size, then change the size of the FBO
-		fboAspectRatio = float(self.fbo.size[1]) / float(self.fbo.size[0])
-		
-		if abs(fboAspectRatio - newAspectRatio) > 0.1:
-			fboSize = (self.fbo.size[0], self.fbo.size[1] * newAspectRatio)
-			self.fbo.size = fboSize
-			self.updateFbo()
-			
-		pass
-
-	# --
-	def loadImage(self, filename, onload = None):
-		self.filename = filename
-		if filename != None:
-			self.onLoadCallback = onload
-				
-			proxyImage = Loader.image(filename)
-					
-			# this is totally stupid behaviour of Kivy
-			# the docs suggest to bind proxy image's on_load method to a callback
-			# to indicate when image is loaded. However, when image is already
-			# in the cache the callback won't be called. My first thought was
-			# that it was a threading issue, because the bindind might have happened
-			# after the callback was initiated, but it seems that indeed the method is just not called.
-			if proxyImage.loaded == False:
-				proxyImage.bind(on_load=self._image_loaded)
-			else:
-				self._image_loaded(proxyImage)
-
-	# --
-	# All used memory except of the FBO texture is released. The image
-	# can still be used, however, properties could not be changed
-	def releaseMemory(self):
-		
-		self.img_texture = False
-		self.border_image = False
-		self.fbo_texture = Texture.create(size=(2,2), colorfmt="rgba")
-				
-		# clear up cache
-		Cache.remove('kv.image')
-		Cache.remove('kv.texture')
-		Cache.remove('kv.loader')
-			
-		pass
-		
-	# --
-	def _image_loaded(self, proxyImage):
-		
-		if proxyImage.image.texture:
-			self.img_texture = proxyImage.image.texture
-			self.aspectRatio = float(proxyImage.image.height) / float(proxyImage.image.width)
-			self.updateFbo()
-			
-			anim = Animation(alpha=1, duration=0.2)
-			anim.start(self)
-			
-			if self.onLoadCallback != None:
-				self.onLoadCallback(self)
-
-# ----------------------------------------------------------------------
-# All slots of captured images are handled by this class
-# ----------------------------------------------------------------------
-class CapturedSlots(Widget):
-
-	alpha = NumericProperty()
-	pictureList = []
-	currentIdx = 0
-	layout = ObjectProperty(None)
-	cells = None
-	num_x = 16
-	num_y = 9
-	cell_w = 0
-	cell_h = 0
-	mutex = Lock()
-	root = None 
-	
-	def __init__(self, **kwargs):
-		super(CapturedSlots, self).__init__(**kwargs)
-		self.alpha = 1.0
-		
-	# prefill all slots with already taken images in chronological order
-	def preloadSlots(self):
-		
-		# setup cell matrix with possible possible picture spots
-		self.cells = [[None] * self.num_x for i in range(self.num_y)]
-		self.cell_w = self.width / self.num_x
-		self.cell_h = self.height / self.num_y
-		
-		# find all files
-		files = glob.glob(captureFilePath + '/*.jpg')
-		files = sorted(files)
-
-		print('screen: %dx%d' % (self.width, self.height))
-		print('cells: %dx%d' % (self.cell_w, self.cell_h))
-		
-		# for each child of type picture load image
-		for child in self.layout.children:
-			if type(child) is Picture:
-				self.pictureList.append(child)
-				
-		# update all slots
-		if len(files) > 0:			
-			for filename in files:
-				#self.populateNextSlot(filename)
-				pass
-				
-	# update image in the next slot - if all slots are full, then start from beginning		
-	def populateNextSlot(self, filename):
-
-		# add new picture spread randomly over the screen
-		newpic = Picture()
-		newpic.center_x = self.width/2
-		newpic.center_y = self.height/2
-		newpic.filename = filename 
-		
-		self.addExistingImage(newpic)
-
-	# add a new image into a random slot.
-	# the image will be animated from its current position and scale down
-	# to the required by the slot
-	def addExistingImage(self, picture, onImageRenderedInto = None):
-
-		self.mutex.acquire()
-		
-		# find a random cell where we put the image into
-		cell = (randint(0, self.num_x-1), randint(0, self.num_y-1))
-		poscntr = ((cell[0] + 0.5) * self.cell_w, (cell[1] + 0.5) * self.cell_h)
-		rot = uniform(-35,35)
-		
-		
-		# remove any images in the cell
-		if self.cells[cell[1]][cell[0]] != None:
-			wdgt = self.cells[cell[1]][cell[0]]
-			#self.layout.remove_widget(wdgt)
-		
-		# add image as widget into the main root first, because
-		# we want to keep it animated for a while
-		self.cells[cell[1]][cell[0]] = picture
-		self.root.add_widget(picture)
-		
-		self.mutex.release()
-		
-		# start animation of the image to be positioned in the slot
-		# when animation stops we burn the image into the FloatLayout
-		def _animate(pic):
-			anim = Animation(center_x=poscntr[0], center_y=poscntr[1], width = 800, rotation = randint(0,2) * 360 + rot, duration=1.7)
-			anim.start(pic)
-
-			# ensure that the widget 
-			# make sure that we render the picture into the main layout only once 
-			# and then remove the used texture - this ensures smaller memory footprint
-			def _addImageToLayout(anim, pic, on_cmpl):
-				self.root.remove_widget(pic)
-				self.layout.render_widget(pic)
-				
-				Clock.schedule_once(lambda dt: pic.releaseMemory(), 1.)
-				
-				if on_cmpl != None:
-					on_cmpl(anim, pic)
-				
-			anim.bind(on_complete = lambda a,w: _addImageToLayout(a,w,onImageRenderedInto))
-			
-			
-		picture.loadImage(picture.filename, lambda pic: _animate(pic))
-							
-		pass
-		
-	pass
-	
-# ----------------------------------------------------------------------
-# ----------------------------------------------------------------------
-class WhiteBillboard(Widget):
-		
-	alpha = NumericProperty()
-	
-	def __init__(self, **kwargs):
-		super(WhiteBillboard, self).__init__(**kwargs)
-		self.alpha = 0
-			
-# ----------------------------------------------------------------------
 # ----------------------------------------------------------------------
 class EState:
 	LOADING 	= 'loading'
@@ -525,6 +119,7 @@ class CaptureApp(App):
 	state = EState.LOADING
 	latestCapturedPicture = None
 	mutex = Lock()
+	keyState = EKeyState.RELEASED
 
 	# slideshow part
 	slideShowAvailableFiles = []
@@ -537,7 +132,7 @@ class CaptureApp(App):
 	def __init__(self, **kwargs):
 		super(CaptureApp, self).__init__(**kwargs)
 		
-		if HasGPIO == False:
+		if HasRpiGPIO == False:
 			self.keyboard = Window.request_keyboard(self.onKeyboardClosed, self)
 			self.keyboard.bind(on_key_down = self.onKeyDown)
 
@@ -578,64 +173,24 @@ class CaptureApp(App):
 		anim.start(self.whiteBillboard)
 		if onComplete != None:
 			anim.bind(on_complete = lambda a,w: onComplete())			
-			
-	# ------------------------------------------------------------------
-	def captureImageThread(self, camera):
-	
-		timestamp = time.time()
-		st = datetime.datetime.fromtimestamp(timestamp).strftime('%H_%M_%S')		
-			
-		if camera == None:
-			st = "test"
-			
-		filename = captureFilePath + st + ".jpg"
-		print "capture image to " + filename
-		
-		if camera != None:
-			camera.capture_image(filename)
-				
-		def _addCapturedImage():
-			# load image and show it in the center
-			picture = Picture(filename, onLoadCallback)
-			picture.center_x = self.root.width / 2
-			picture.center_y = self.root.height / 2
-			
-		Clock.schedule_once(lambda dt: _addCapturedImage(), 0)
-			
-	# ------------------------------------------------------------------
-	def captureImageImpl(self, onLoadCallback):
-		
-							
-		def _disablePreview():
-			self.previewImage.alpha = 0
-			
-		Clock.schedule_once(lambda dt: self.fadeIn(), 0.1)
-		Clock.schedule_once(lambda dt: self.fadeOut(), 0.35)
-		Clock.schedule_once(lambda dt: _disablePreview(), 0.075)
-		#Clock.schedule_once(lambda dt: _capture(), 0.1)
-		
-		# start a new thread with the actual capturing process
-		Thread(target=self.captureImageThread, args=(self.camera,)).start()
-		
-		pass
-		
-		
+					
 		
 	# ------------------------------------------------------------------
 	def build(self):		
 		
 		self.title = 'Photobooth'
 		self.previewImage = self.root.ids.camera_image
-		self.previewImage.setCamera(self.camera)	
+		self.previewImage.setCamera(capturePreviewFile, self.camera)	
 		
 		self.whiteBillboard = self.root.ids.white_overlay
 		self.slotImages = self.root.ids.picture_slots		
 		self.slotImages.root = self.root 
+		self.slotImages.setImageFilePath(captureSnapshotPath)
 		
 		# todo - this should be better called after scene graph is created and not just after some amount of time
-		Clock.schedule_once(lambda dt: self.preloadSlots(), 1.0)		 
+		Clock.schedule_once(lambda dt: self.preloadSlots())
 		
-		if HasGPIO == True:
+		if HasRpiGPIO == True:
 			Clock.schedule_interval(lambda dt: self.checkGPIO(), 1./20.)
 		
 		pass
@@ -643,15 +198,14 @@ class CaptureApp(App):
 
 	# ------------------------------------------------------------------
 	def checkGPIO(self):
-		global keyState
 		
 		# no need to debounce, since this method is called every 100ms anyway
 		# and storing the last state gives us a debouncing automagically
-		if keyState == EKeyState.RELEASED and GPIO.input(KEY_PIN) == 0:
-			keyState = EKeyState.PRESSED
+		if self.keyState == EKeyState.RELEASED and GPIO.input(KEY_PIN) == 0:
+			self.keyState = EKeyState.PRESSED
 			self.userEvent() #onKeyDown(None, (32,0), None, None)
-		if keyState == EKeyState.PRESSED and GPIO.input(KEY_PIN) == 1:
-			keyState = EKeyState.RELEASED
+		if self.keyState == EKeyState.PRESSED and GPIO.input(KEY_PIN) == 1:
+			self.keyState = EKeyState.RELEASED
 			
 		pass
 		
@@ -722,7 +276,7 @@ class CaptureApp(App):
 		self.state = EState.INSPECTION
 		
 		# make picture visible
-		picture.size = (1000., 1000. * picture.aspectRatio)
+		picture.size = (float(inspectImageWidth), float(inspectImageWidth) * picture.aspectRatio)
 		picture.center_x = self.root.width / 2
 		picture.center_y = self.root.height / 2
 		self.latestCapturedPicture = picture
@@ -733,16 +287,56 @@ class CaptureApp(App):
 		
 		pass
 		
+		
+	# ------------------------------------------------------------------
+	# capture the actual image to a file	
+	# ------------------------------------------------------------------
+	def captureImageThread(self, camera, onLoadCallback):
+
+		# generate filename of the new file
+		timestamp = time.time()
+		st = datetime.datetime.fromtimestamp(timestamp).strftime('%H_%M_%S')					
+		if camera == None: st = "test"			
+		filename = captureFilePath + st + ".jpg"
+		
+		print "capture image to " + filename
+		
+		# capture file if camera is available
+		if camera != None: camera.capture_image(filename)
+				
+		# generate a reduced version of the image in the snapshots folder
+		filename_small = captureSnapshotPath + st + ".jpg"
+		cmd = [convertCmd, '-geometry', str(captureSnapshowWidth) + 'x', filename, filename_small]
+		print "resize image: " + str(cmd)
+		call(cmd)
+		
+		# load image and show it in the center
+		def _addCapturedImage():			
+			picture = Picture(filename_small, onLoadCallback)
+			#picture.center_x = self.root.width / 2
+			#picture.center_y = self.root.height / 2
+			
+		Clock.schedule_once(lambda dt: _addCapturedImage(), 0)
+			
 	# ------------------------------------------------------------------
 	# Start counter for capture
 	# ------------------------------------------------------------------
 	def captureImage(self):
 		
 		self.state = EState.CAPTURING
-		self.captureImageImpl(self.inspectImage)
+		
+		# disable preview images
+		self.previewImage.disablePreview()
+							
+		# start a new thread with the actual capturing process
+		Thread(target=self.captureImageThread, args=(self.camera,self.inspectImage,)).start()
+
+		# start whiteout effect slightly later to fit to the shutter of the camera
+		Clock.schedule_once(lambda dt: self.fadeIn(0.1, self.previewImage.hide()), cameraShutterLatency)
+		Clock.schedule_once(lambda dt: self.fadeOut(), cameraShutterLatency + 0.2)
 		
 		pass
-		
+				
 	# ------------------------------------------------------------------
 	# Start counter for capture
 	# ------------------------------------------------------------------
@@ -770,7 +364,9 @@ class CaptureApp(App):
 		# set state and start frame updates
 		def _setState():
 			self.state = EState.PREVIEW
-			Clock.schedule_interval(lambda dt: _updatePreview(), 1.0 / 10.0)
+			self.previewImage.show()
+			self.previewImage.enablePreview()
+			Clock.schedule_interval(lambda dt: _updatePreview(), 1.0 / 20.0)
 				
 		if doFadeIn:
 			anim = Animation(alpha=1.0, t='in_cubic', duration=1.0)
@@ -790,8 +386,8 @@ class CaptureApp(App):
 	def preloadSlots(self):
 		
 		self.state = EState.LOADING		
-		self.slotImages.preloadSlots()
 		self.startPreview()
+		Clock.schedule_once(lambda dt: self.slotImages.preloadSlots(), 1.0)
 		
 		pass
 		
@@ -810,20 +406,21 @@ class CaptureApp(App):
 			# just because python does not support assignments in the ambda
 			def _setAlpha():
 				self.slotImages.alpha = 0
-				self.previewImage.alpha = 0
+				self.previewImage.hide()
+				self.previewImage.disablePreview()
 				
 				# add all picture widgets
 				for (pic,speed) in self.slideShowCurrentPictures:
 					self.root.add_widget(pic,1)
 					
-				Clock.schedule_interval(self.updateSlideShow, 1.0 / 60.0)
+				Clock.schedule_interval(self.updateSlideShow, 1.0 / 40.0)
 				pass
 			
 			Clock.schedule_once(lambda dt: self.fadeIn(0.4, _setAlpha), 0.05)
 			Clock.schedule_once(lambda dt: self.fadeOut(0.2), 0.8)
 
 			# read in all available images and assign to them uniform probabilities
-			self.slideShowAvailableFiles = glob.glob(captureFilePath + "*.jpg")
+			self.slideShowAvailableFiles = glob.glob(captureSnapshotPath + "*.jpg")
 			self.slideShowAvailableFileProbabilities = [1.0 for i in xrange(len(self.slideShowAvailableFiles))]
 			
 		self.mutex.release()
@@ -843,7 +440,7 @@ class CaptureApp(App):
 			# just because python does not support assignments in the lambda
 			def _setAlpha():
 				self.slotImages.alpha = 1
-				self.previewImage.alpha = 1
+				#self.previewImage.show()
 				self.startPreview(False)
 				
 				# remove all picture widgets
@@ -878,10 +475,10 @@ class CaptureApp(App):
 			
 			# create a new image from the selected file, this will be shown
 			def _addImageStartScrolling(pic):
-				width = randint(700, 1000)
+				width = randint(float(self.root.width)/2.5, float(self.root.width)/1.5)
 				pic.keep_aspect = True
 				pic.size = (width, width)
-				pic.x = uniform(0, self.root.width) - width / 2
+				pic.x = uniform(-width/3., self.root.width - width + width/3.)
 				pic.y = -pic.size[1]
 				pic.rotation = uniform(-25,25)
 				self.slideShowCurrentPictures.append( (pic, uniform(100,200)) )
@@ -890,7 +487,7 @@ class CaptureApp(App):
 			pic = Picture(self.slideShowAvailableFiles[idx], _addImageStartScrolling)
 			
 			# repeat the process in X seconds
-			self.slideShowLastTimestamp = currentTime + 3.0
+			self.slideShowLastTimestamp = currentTime + 2.0
 			pass
 								
 		# all images which are currently available, are scrolled through the screen
@@ -924,6 +521,6 @@ class CaptureApp(App):
 if __name__ == '__main__':	
 	CaptureApp().run()
 	
-	if HasGPIO == True:
+	if HasRpiGPIO == True:
 		GPIO.cleanup()
 	

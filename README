@@ -3,3 +3,4 @@ Photobooth project based on Kivy and GPhoto
 Requirements:
  - Kivy 1.9.1 (found in externals)
  - numpy >= 1.7
+ - Imagemagick (required for convert system command)
