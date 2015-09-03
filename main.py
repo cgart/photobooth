@@ -200,14 +200,14 @@ class Preview(Widget):
 		pass
 			
 	# ------------------------------------------------------------------
-	def onNewFrame(self, proxyImage):
-		self.preview_image.texture = proxyImage.image.texture
-		pass
+	#def onNewFrame(self, proxyImage):
+	#	self.preview_image.texture = proxyImage.image.texture
+	#	pass
 		
 	# ------------------------------------------------------------------
 	def updateFrame(self):
 		
-		if self.camera != None:
+		if self.camera != None and self.alpha > 0.1:
 			self.camera.capture_preview(capturePreviewFile)
 		self.image.reload()
 		self.preview_image.texture = self.image.texture
@@ -240,7 +240,7 @@ class CounterNum(Widget):
 		size_old = self.texture_size
 		size_new = (size_old[0] * 1.5, size_old[1] * 1.5)
 		pos = self.pos
-		anim = Animation(size=size_new, pos=(pos[0] - (size_new[0] - size_old[0])/2, pos[1] - (size_new[1] - size_old[1])/2), duration=0.25)
+		anim = Animation(size=size_new, pos=(pos[0] - (size_new[0] - size_old[0])/2, pos[1] - (size_new[1] - size_old[1])/2), duration=0.5)
 		#anim = Animation(scale=1.5, pos=(pos[0] - (size_new[0] - size_old[0])/2, pos[1] - (size_new[1] - size_old[1])/2), duration=0.25)
 		anim.start(self)
 
@@ -426,8 +426,9 @@ class CapturedSlots(Widget):
 		# update all slots
 		if len(files) > 0:			
 			for filename in files:
-				self.populateNextSlot(filename)
-	
+				#self.populateNextSlot(filename)
+				pass
+				
 	# update image in the next slot - if all slots are full, then start from beginning		
 	def populateNextSlot(self, filename):
 
@@ -541,7 +542,7 @@ class CaptureApp(App):
 			self.keyboard.bind(on_key_down = self.onKeyDown)
 
 		
-		#self.camera = piggyphoto.camera()
+		self.camera = piggyphoto.camera()
 		pass
 					
 	# ------------------------------------------------------------------
@@ -579,36 +580,42 @@ class CaptureApp(App):
 			anim.bind(on_complete = lambda a,w: onComplete())			
 			
 	# ------------------------------------------------------------------
-	def captureImageImpl(self, onLoadCallback):
+	def captureImageThread(self, camera):
+	
+		timestamp = time.time()
+		st = datetime.datetime.fromtimestamp(timestamp).strftime('%H_%M_%S')		
+			
+		if camera == None:
+			st = "test"
+			
+		filename = captureFilePath + st + ".jpg"
+		print "capture image to " + filename
 		
-							
-		# captue the actual image
-		def _capture():
-			
-			timestamp = time.time()
-			st = datetime.datetime.fromtimestamp(timestamp).strftime('%H_%M_%S')		
-			
-			if self.camera == None:
-				st = "test"
+		if camera != None:
+			camera.capture_image(filename)
 				
-			filename = captureFilePath + st + ".jpg"
-			print "capture image to " + filename
-			
-			if self.camera != None:
-				self.camera.capture_image(filename)
-				
+		def _addCapturedImage():
 			# load image and show it in the center
 			picture = Picture(filename, onLoadCallback)
 			picture.center_x = self.root.width / 2
 			picture.center_y = self.root.height / 2
 			
+		Clock.schedule_once(lambda dt: _addCapturedImage(), 0)
+			
+	# ------------------------------------------------------------------
+	def captureImageImpl(self, onLoadCallback):
+		
+							
 		def _disablePreview():
 			self.previewImage.alpha = 0
 			
-		Clock.schedule_once(lambda dt: self.fadeIn())
-		Clock.schedule_once(lambda dt: self.fadeOut(), 0.25)
+		Clock.schedule_once(lambda dt: self.fadeIn(), 0.1)
+		Clock.schedule_once(lambda dt: self.fadeOut(), 0.35)
 		Clock.schedule_once(lambda dt: _disablePreview(), 0.075)
-		Clock.schedule_once(lambda dt: _capture(),0.03)
+		#Clock.schedule_once(lambda dt: _capture(), 0.1)
+		
+		# start a new thread with the actual capturing process
+		Thread(target=self.captureImageThread, args=(self.camera,)).start()
 		
 		pass
 		
