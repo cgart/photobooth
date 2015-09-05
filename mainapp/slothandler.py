@@ -33,6 +33,8 @@ class CapturedSlots(Widget):
 
     image_path = ''
 
+    picMaxTexSize = None
+    
     # constructor
     def __init__(self, **kwargs):
         
@@ -54,6 +56,10 @@ class CapturedSlots(Widget):
         files = glob.glob(self.image_path + '/*.jpg')
         files = sorted(files)
 
+        # reduce amount of files to be loaded
+        if len(files) > 10:
+            files = files[:10]
+            
         print('screen: %dx%d' % (self.width, self.height))
         print('cells: %dx%d' % (self.cell_w, self.cell_h))
         
@@ -72,7 +78,7 @@ class CapturedSlots(Widget):
     def populateNextSlot(self, filename):
 
         # add new picture spread randomly over the screen
-        newpic = Picture()
+        newpic = Picture(None, None, self.picMaxTexSize)
         newpic.center_x = self.width/2
         newpic.center_y = self.height/2
         newpic.filename = filename 

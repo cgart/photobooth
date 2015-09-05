@@ -8,16 +8,19 @@ from kivy.config import Config
 # ----------------------------------------------------------------------
 
 # Folder where all full-res captures from camera goes
-captureFilePath = "captures/"
+captureFilePath = "/media/odroid/B5BD-FED7/photobooth/captures/"
 
 # Folder with resized captures (smaller for faster loading)
-captureSnapshotPath = "snapshots/"
+captureSnapshotPath = "/media/odroid/B5BD-FED7/photobooth/snapshots/"
 
 # Filename for the preview image from the camera to be updated
 capturePreviewFile = "preview.jpg"
 
 # Width of the snapshot files
 captureSnapshowWidth = 600
+
+# Maximal texture size of the pictures displayed on the screen
+pictureMaxTexSize=(512,512)
 
 # Width of the captued image, when previewing on the screen (height is chosen according to the aspect ratio)
 inspectImageWidth = 1200
@@ -30,11 +33,12 @@ convertCmd = "/usr/bin/convert"
 
 # settings of the window
 #Config.set('graphics', 'fullscreen', '0')
-Config.set('graphics', 'width', '1800')
-Config.set('graphics', 'height', '960')
+Config.set('graphics', 'width', '1920')
+Config.set('graphics', 'height', '1080')
 Config.set('graphics', 'fbo', 'hardware')
 Config.set('graphics', 'fullscreen', '1')
 Config.set('graphics', 'show_cursor', '0')
+Config.set('graphics', 'borderless', '1')
 
 
 # ----------------------------------------------------------------------
@@ -137,7 +141,11 @@ class CaptureApp(App):
 			self.keyboard.bind(on_key_down = self.onKeyDown)
 
 		
-		self.camera = piggyphoto.camera()
+		try:
+			self.camera = piggyphoto.camera()
+		except:
+			self.camera = None
+			
 		pass
 					
 	# ------------------------------------------------------------------
@@ -186,6 +194,7 @@ class CaptureApp(App):
 		self.slotImages = self.root.ids.picture_slots		
 		self.slotImages.root = self.root 
 		self.slotImages.setImageFilePath(captureSnapshotPath)
+		self.slotImages.picMaxTexSize = pictureMaxTexSize
 		
 		# todo - this should be better called after scene graph is created and not just after some amount of time
 		Clock.schedule_once(lambda dt: self.preloadSlots())
@@ -234,6 +243,14 @@ class CaptureApp(App):
 				
 		self.mutex.acquire()
 		
+		# check if we can connect to the camera
+		if self.camera == None:
+			try:
+				self.camera = piggyphoto.camera()
+				self.previewImage.setCamera(capturePreviewFile, self.camera)	
+			except:
+				self.camera = None
+
 		if self.state == EState.PREVIEW:
 			self.mutex.release()
 			self.runCounter()
@@ -295,7 +312,7 @@ class CaptureApp(App):
 
 		# generate filename of the new file
 		timestamp = time.time()
-		st = datetime.datetime.fromtimestamp(timestamp).strftime('%H_%M_%S')					
+		st = datetime.datetime.fromtimestamp(timestamp).strftime('%Y%m%d_%H%M%S')					
 		if camera == None: st = "test"			
 		filename = captureFilePath + st + ".jpg"
 		
@@ -312,7 +329,7 @@ class CaptureApp(App):
 		
 		# load image and show it in the center
 		def _addCapturedImage():			
-			picture = Picture(filename_small, onLoadCallback)
+			picture = Picture(filename_small, onLoadCallback, pictureMaxTexSize)
 			#picture.center_x = self.root.width / 2
 			#picture.center_y = self.root.height / 2
 			
@@ -509,7 +526,7 @@ class CaptureApp(App):
 				self.slideShowCurrentPictures.append( (pic, uniform(100,200)) )
 				self.root.add_widget(pic,1)				
 				
-			pic = Picture(self.slideShowAvailableFiles[idx], _addImageStartScrolling)
+			pic = Picture(self.slideShowAvailableFiles[idx], _addImageStartScrolling, pictureMaxTexSize)
 			
 			# repeat the process in X seconds
 			self.slideShowLastTimestamp = currentTime + 2.0

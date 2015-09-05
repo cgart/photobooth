@@ -40,12 +40,15 @@ class Picture(Scatter):
     aspectRatio = 1.0
 
     # --
-    def __init__(self, filename=None, onload=None, **kwargs):
+    def __init__(self, filename=None, onload=None, maxtexsize = (1024,1024), **kwargs):
         
+        if maxtexsize == None:
+            maxtexsize = (1024,1024)
+            
         self.canvas = Canvas()
         
         with self.canvas:
-            self.fbo = Fbo(size=(1024,1024))
+            self.fbo = Fbo(size=maxtexsize)
             self.fbo.add_reload_observer(self.updateFbo)
             
         self.border_image = CoreImage('data/shadow32.png')
