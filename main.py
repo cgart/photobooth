@@ -37,7 +37,7 @@ Config.set('graphics', 'width', '1920')
 Config.set('graphics', 'height', '1080')
 Config.set('graphics', 'fbo', 'hardware')
 Config.set('graphics', 'fullscreen', '1')
-Config.set('graphics', 'show_cursor', '0')
+Config.set('graphics', 'show_cursor', 0)
 Config.set('graphics', 'borderless', '1')
 
 
@@ -333,7 +333,10 @@ class CaptureApp(App):
 			#picture.center_x = self.root.width / 2
 			#picture.center_y = self.root.height / 2
 			
-		Clock.schedule_once(lambda dt: _addCapturedImage(), 0)
+		if camera != None:
+			Clock.schedule_once(lambda dt: _addCapturedImage(), 0)
+		else:
+			Clock.schedule_once(lambda dt: _addCapturedImage(), cameraShutterLatency)
 			
 	# ------------------------------------------------------------------
 	# Start counter for capture
@@ -445,6 +448,7 @@ class CaptureApp(App):
 			
 			# just because python does not support assignments in the ambda
 			def _setAlpha():
+				Clock.schedule_once(lambda dt: self.fadeOut(0.2), 0.2)
 				self.slotImages.alpha = 0
 				self.previewImage.hide()
 				self.previewImage.disablePreview()
@@ -456,8 +460,7 @@ class CaptureApp(App):
 				Clock.schedule_interval(self.updateSlideShow, 1.0 / 40.0)
 				pass
 			
-			Clock.schedule_once(lambda dt: self.fadeIn(0.4, _setAlpha), 0.05)
-			Clock.schedule_once(lambda dt: self.fadeOut(0.2), 0.8)
+			Clock.schedule_once(lambda dt: self.fadeIn(0.4, _setAlpha))
 
 			
 		self.mutex.release()
@@ -478,6 +481,7 @@ class CaptureApp(App):
 			
 			# just because python does not support assignments in the lambda
 			def _setAlpha():
+				Clock.schedule_once(lambda dt: self.fadeOut(0.1))
 				self.slotImages.alpha = 1
 				#self.previewImage.show()
 				self.startPreview(False)
@@ -488,8 +492,7 @@ class CaptureApp(App):
 									
 				pass
 				
-			Clock.schedule_once(lambda dt: self.fadeIn(0.3, _setAlpha), 0.05)
-			Clock.schedule_once(lambda dt: self.fadeOut(0.1), 0.35)
+			Clock.schedule_once(lambda dt: self.fadeIn(0.3, _setAlpha))
 	
 		self.mutex.release()
 				
