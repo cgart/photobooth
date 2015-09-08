@@ -33,7 +33,7 @@ class FboFloatLayout(Widget):
 		with self.fbo:
 			ClearColor(0,0,0,0)
 			ClearBuffers()
-			Rectangle(source = 'data/background.jpg', size=self.size, pos=self.pos)
+			#Rectangle(source = 'data/background.jpg', size=self.size, pos=self.pos)
 
 		self.texture = self.fbo.texture
 				

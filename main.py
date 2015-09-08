@@ -8,10 +8,12 @@ from kivy.config import Config
 # ----------------------------------------------------------------------
 
 # Folder where all full-res captures from camera goes
-captureFilePath = "/media/odroid/B5BD-FED7/photobooth/captures/"
+#captureFilePath = "/media/odroid/B5BD-FED7/photobooth/captures/"
+captureFilePath = "captures/"
 
 # Folder with resized captures (smaller for faster loading)
-captureSnapshotPath = "/media/odroid/B5BD-FED7/photobooth/snapshots/"
+#captureSnapshotPath = "/media/odroid/B5BD-FED7/photobooth/snapshots/"
+captureSnapshotPath = "snapshots/"
 
 # Filename for the preview image from the camera to be updated
 capturePreviewFile = "preview.jpg"
@@ -33,6 +35,8 @@ convertCmd = "/usr/bin/convert"
 
 # settings of the window
 #Config.set('graphics', 'fullscreen', '0')
+#Config.set('graphics', 'width', '1800')
+#Config.set('graphics', 'height', '800')
 Config.set('graphics', 'width', '1920')
 Config.set('graphics', 'height', '1080')
 Config.set('graphics', 'fbo', 'hardware')
@@ -68,7 +72,7 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.animation import Animation
 from kivy.cache import Cache
-
+from kivy.uix.effectwidget import EffectWidget, EffectBase
 
 # Photobooth application
 from mainapp.fbolayout import FboFloatLayout
@@ -77,7 +81,7 @@ from mainapp.slothandler import CapturedSlots
 from mainapp.picture import Picture
 from mainapp.counter import CounterNum
 from mainapp.helpers import WhiteBillboard
-
+from mainapp.effects import ColorGlowEffect, FullScreenEffect
 
 
 # Raspberry GPIO
@@ -94,6 +98,12 @@ try:
 except ImportError:
 	pass
 
+
+class ColorGlowEffect(EffectBase):
+	
+    def __init__(self, *args, **kwargs):
+        super(ColorGlowEffect, self).__init__(*args, **kwargs)
+        self.source = 'data/color_glow.glsl'
 
 
 # ----------------------------------------------------------------------
@@ -124,7 +134,8 @@ class CaptureApp(App):
 	latestCapturedPicture = None
 	mutex = Lock()
 	keyState = EKeyState.RELEASED
-
+	backgroundEffect = None
+	
 	# slideshow part
 	slideShowAvailableFiles = []
 	slideShowAvailableFileProbabilities = []
@@ -189,6 +200,9 @@ class CaptureApp(App):
 		self.title = 'Photobooth'
 		self.previewImage = self.root.ids.camera_image
 		self.previewImage.setCamera(capturePreviewFile, self.camera)	
+		
+		self.backgroundEffect = self.root.ids.background_effect
+		self.backgroundEffect.hide()
 		
 		self.whiteBillboard = self.root.ids.white_overlay
 		self.slotImages = self.root.ids.picture_slots		
@@ -445,6 +459,7 @@ class CaptureApp(App):
 				return
 				
 			self.state = EState.SLIDESHOW
+			self.backgroundEffect.show()
 			
 			# just because python does not support assignments in the ambda
 			def _setAlpha():
@@ -452,6 +467,7 @@ class CaptureApp(App):
 				self.slotImages.alpha = 0
 				self.previewImage.hide()
 				self.previewImage.disablePreview()
+				Clock.schedule_once(lambda dt: self.fadeOut(0.2), 0.2)
 				
 				# add all picture widgets
 				for (pic,speed) in self.slideShowCurrentPictures:
@@ -485,6 +501,8 @@ class CaptureApp(App):
 				self.slotImages.alpha = 1
 				#self.previewImage.show()
 				self.startPreview(False)
+				self.backgroundEffect.hide()
+				Clock.schedule_once(lambda dt: self.fadeOut(0.1), 0.05)
 				
 				# remove all picture widgets
 				for (pic,speed) in self.slideShowCurrentPictures:

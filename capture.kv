@@ -1,18 +1,16 @@
 #:kivy 1.0
 #:import kivy kivy
 #:import win kivy.core.window
+#:import ew kivy.uix.effectwidget
+#:import app mainapp.effects
 
 FloatLayout:
     id: main_layout
     size_hint: (1.0, 1.0)
-        
-    canvas:
-        Color:
-            rgb: 0,0,0
-        #Rectangle:
-        #    source: 'data/background.jpg'
-        #    size: self.size
 
+    FullScreenEffect:
+        id: background_effect
+        effects: [app.ColorGlowEffect()]
                     
     # Widget holding all available slots to show previous images
     # all slots are children widget on the same level
@@ -40,7 +38,7 @@ FloatLayout:
         
     WhiteBillboard:
         id: white_overlay
-        
+                        
 #<Widget>:
 #    canvas.after:
 #        Line:
